@@ -1,0 +1,6 @@
+@SpraywallAppWeb_HostAddress = http://localhost:5195
+
+GET {{SpraywallAppWeb_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
