@@ -23,9 +23,11 @@ public class UserContext : DbContext
 
 
 
-    // The 'users' table - allows api to manipulate data through c# objects,
-    // rather than sql queries.
+    // Sets of objects allow data to be manipulated through class 
+    // structures, rather than raw sql queries.
     public DbSet<User> Users { get; set; }
+    public DbSet<Wall> Walls { get; set; }
+
 
     // Seed the database, if it's empty
     protected override void OnModelCreating(ModelBuilder modelBuilder)

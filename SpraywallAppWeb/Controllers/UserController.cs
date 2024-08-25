@@ -4,9 +4,7 @@ using SpraywallAppWeb.Data;
 using SpraywallAppWeb.Helpers;
 using SpraywallAppWeb.Models;
 using SpraywallAppWeb.Services;
-using System.Diagnostics;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace SpraywallAppWeb.Controllers;
 
