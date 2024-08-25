@@ -4,6 +4,9 @@ using SpraywallAppWeb.Data;
 using SpraywallAppWeb.Helpers;
 using SpraywallAppWeb.Models;
 using SpraywallAppWeb.Services;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace SpraywallAppWeb.Controllers;
 
@@ -70,7 +73,7 @@ public class UserController : ControllerBase
 
             // Generate and return a security token for the client
             string token = AuthService.GenerateToken(user);
-            return Ok(new { Token = token });
+            return Ok(token);
         }
     }
 
@@ -78,7 +81,6 @@ public class UserController : ControllerBase
     [Route("login")]
     public async Task<IActionResult> LogInUser(UserToLogin userToLogin)
     {
-
         // Create an instance of the usercontext, which is destroyed on exiting the user block
         // This pattern prevents conflicts between endpoints using the same context
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
@@ -88,20 +90,35 @@ public class UserController : ControllerBase
             if (user == null)
                 return BadRequest("Invalid credentials");
 
-            // If passwords do not match, reject the request.
-            // Before returning a response, erase the decrypted passwords
-            byte[] storedPassword = PasswordEncryption.Decrypt(Convert.FromBase64String(user.Password));
-            byte[] passwordAttempt = PasswordEncryption.Decrypt(Convert.FromBase64String(userToLogin.Password));
-            bool validLogin = storedPassword != passwordAttempt;
-            storedPassword = Convert.FromBase64String("erased");
-            passwordAttempt = Convert.FromBase64String("erased");
-            if (!validLogin)
-                return BadRequest("Invalid credentials");
+            // stored user's encrypted password
+            string storedEncryptedBase64 = user.Password;
+            byte[] storedEncryptedBytes = Convert.FromBase64String(storedEncryptedBase64);
+
+            // login attempt's encrypted password
+            string submittedEncryptedBase64 = userToLogin.Password;
+            byte[] submittedEncryptedBytes = Convert.FromBase64String(submittedEncryptedBase64);
+
+            // Byte arrays should be erased when comparison is finished
+            byte[] storedDecryptedPassword;
+            byte[] submittedDecryptedPassword;
+
+            // Confirm decrypted passwords match
+            try
+            {
+                storedDecryptedPassword = PasswordEncryption.Decrypt(storedEncryptedBytes);
+                submittedDecryptedPassword = PasswordEncryption.Decrypt(submittedEncryptedBytes);
+
+                // If passwords don't match, return a bad request
+                bool isValidLogin = storedDecryptedPassword.SequenceEqual(submittedDecryptedPassword);
+                if (!isValidLogin)
+                    return BadRequest("Invalid credentials");
+            }
+            catch (CryptographicException ex) { return BadRequest("Don't play games with me, Kodie."); }
 
             // Valid login :D
             // Generate and return a security token for the client
             string token = AuthService.GenerateToken(user);
-            return Ok(new { Token = token });
+            return Ok(token);
         }
     }
 

@@ -14,6 +14,6 @@ public class User
     public string Name { get; set; }
     public string Email { get; set; }
 
-    // 
+    // The user's hashed password - may be decrypted by the passwordencryption.decrypt method
     public string Password { get; set; }
 }

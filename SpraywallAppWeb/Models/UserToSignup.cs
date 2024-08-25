@@ -11,6 +11,7 @@ public class UserToSignup
     public string Name { get; set; }
     public string Email { get; set; }
 
-    // The hash of the user's password
+    // A hashed password - the password is stored hashed, too, but may be
+    // decrypted by the passwordencryption.decrypt method
     public string Password { get; set; }
 }
