@@ -54,6 +54,10 @@ namespace SpraywallAppWeb.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("IdentifiedHoldsJsonPath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ImagePath")
                         .IsRequired()
                         .HasColumnType("TEXT");
