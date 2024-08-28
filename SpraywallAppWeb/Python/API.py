@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from ultralytics import YOLO
 import cv2
+import re
 import os
 
 app = FastAPI()
