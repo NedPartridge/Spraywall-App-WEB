@@ -2,8 +2,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SpraywallAppWeb.Data;
+using SpraywallAppWeb.Helpers;
 using SpraywallAppWeb.Models;
-using SpraywallAppWeb.Services;
+using System.Diagnostics;
+using System.Text.Json;
 
 namespace SpraywallAppWeb.Controllers;
 
@@ -14,7 +16,6 @@ namespace SpraywallAppWeb.Controllers;
 [Route("[controller]")]
 public class WallsController : ControllerBase
 {
-
     // Initialise the controller
     //
     // Dependecy injection (DI) is used to provide the controller with a database (db) context factory - 
@@ -29,9 +30,13 @@ public class WallsController : ControllerBase
         DbContextFactory = dbContextFactory;
     }
 
+    HttpClient _httpClient = new(); 
+
     // Create a wall, and add it to the database
     // 
     // Request consists of a wall name, and an image of the spraywall.
+    //
+    // Contacts a python api (built & hosted by yours truly) to analyse the uploaded image files
     [Authorize]
     [HttpPost]
     public async Task<IActionResult> CreateWall([FromForm] CreateWallDto dto)
@@ -55,30 +60,20 @@ public class WallsController : ControllerBase
                 await dto.Image.CopyToAsync(stream);
             }
 
-            // Greatest potential bottleneck in the application 
-            // Running the identification takes up to a whopping 2gb of ram
-            string identifiedHoldsJson = WallService.IdentifyHolds(filePath);
+            // Construct the full URL with the fileName as a query parameter
+            // Hardcoding is ok - only the one device, on api, yada yada - see solution requirements
+            string baseUrl = "http://localhost:8000";
+            string requestUrl = $"{baseUrl}/identify-holds?fileName={Uri.EscapeDataString(fileName)}";
 
-            // If shit hits the fan, let the mobile app sort itself out
-            if (identifiedHoldsJson == "error")
-                return BadRequest("Unknown error");
+            //// Contact the python api and analyse the image
+            HttpResponseMessage rawResults = await _httpClient.GetAsync(requestUrl);
+            List<Box> boxList = WallHelper.ConvertToBoxes(await rawResults.Content.ReadAsStringAsync());
+            string jsonResults = JsonSerializer.Serialize(boxList);
 
-            // Reject requests with poor quality images
-            // The algorithm is thought 'good enough' such that it won't miss anything,
-            // Meaning that if the wall is an 'actual' wall, it will have identifiable holds.
-            if (identifiedHoldsJson == null |
-                identifiedHoldsJson == "" |
-                identifiedHoldsJson == "[]" |
-                identifiedHoldsJson == "[{}]")
-                return BadRequest("No holds identified");
-
-
-            // Create a unique file name for the JSON file
+            // Create a unique file name for the JSON file, save
             var jsonFileName = Guid.NewGuid().ToString() + ".json";
             var jsonFilePath = Path.Combine(_environment.WebRootPath, "json", jsonFileName);
-
-            // Save the JSON data to the file
-            await System.IO.File.WriteAllTextAsync(jsonFilePath, identifiedHoldsJson);
+            await System.IO.File.WriteAllTextAsync(jsonFilePath, jsonResults);
 
             // Create a new Wall object, and save to the database
             var wall = new Wall
@@ -91,7 +86,7 @@ public class WallsController : ControllerBase
             await context.SaveChangesAsync();
 
             // Send the holds back to the user, so they can view
-            return Ok(identifiedHoldsJson);
+            return Ok();
         }
     }
 

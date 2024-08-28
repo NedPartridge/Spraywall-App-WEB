@@ -21,7 +21,6 @@ def detect_holds(img_path):
 
     if isinstance(results, list) and len(results) > 0:
         result = results[0]  # Get the first result if there are multiple
-
         # Process and return bounding boxes
         boxes = result.boxes
         return boxes.xyxy.cpu().numpy()
@@ -30,7 +29,4 @@ def detect_holds(img_path):
         print("Unexpected results format:", results)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        detect_holds(sys.argv[1])
-    else:
-        print("No image path provided.")
+    print(detect_holds(r"C:\Users\nedfp\OneDrive\Desktop\Ned\Programming\Software Development\Criterion 6\Spraywall-App-WEB\SpraywallAppWeb\wwwroot\images\09e5a200-8eae-4c9c-974c-4855ac478864.jpg"));
