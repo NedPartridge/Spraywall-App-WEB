@@ -5,7 +5,10 @@ using SpraywallAppWeb.Data;
 using SpraywallAppWeb.Helpers;
 using SpraywallAppWeb.Models;
 using System.Diagnostics;
+using System.IO;
+using System.Security.Claims;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace SpraywallAppWeb.Controllers;
 
@@ -32,18 +35,38 @@ public class WallsController : ControllerBase
 
     HttpClient _httpClient = new(); 
 
-    // Create a wall, and add it to the database
+    // Create a wall, and add it to the database: authorization required (inherits from controller)
     // 
     // Request consists of a wall name, and an image of the spraywall.
     //
     // Contacts a python api (built & hosted by yours truly) to analyse the uploaded image files
-    [Authorize]
     [HttpPost]
     public async Task<IActionResult> CreateWall([FromForm] CreateWallDto dto)
     {
         // Create a db context
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
+            // Get the requesting user's id from the security token
+            // Will only send bad req to desktop/mobile user if they've timed out, 
+            // this is mostly to protect the api    
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            { 
+                return BadRequest("Invalid credentials"); 
+            }
+            try 
+            {
+                // Type check
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any()) 
+                { 
+                    return BadRequest("Invalid credentials"); 
+                }
+            }
+            catch (Exception ex) { return BadRequest("Invalid credentials"); }
+
             // Wall must have a unique name, and an image of the wall is required
             if (dto.Image == null || dto.Image.Length == 0)
                 return BadRequest("Image is required");
@@ -83,6 +106,11 @@ public class WallsController : ControllerBase
                 IdentifiedHoldsJsonPath = $"/json/{jsonFileName}"
             };
             context.Walls.Add(wall);
+
+            // Assign the wall to be managed by the creating user.
+            User user = context.Users.FirstOrDefault(u => u.Id == userId);
+            user.ManagedWalls.Add(wall);
+
             await context.SaveChangesAsync();
 
             // Send the holds back to the user, so they can view
@@ -90,16 +118,146 @@ public class WallsController : ControllerBase
         }
     }
 
-    [HttpGet("{id}")]
+
+
+    // Overwrite the old name, image with new name, image
+    [HttpPost("updatewall/{id}")]
+    public async Task<IActionResult> UpdateWall(int id, [FromBody] CreateWallDto wall)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            // Validate wall exists, and that user is authourised to access it (is the manager)
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            {
+                return BadRequest("Invalid credentials");
+            }
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
+                }
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            if (wall == null) // existence check
+                return BadRequest();
+
+            // Get the wall stored in the db
+            Wall storedWall = context.Walls.FirstOrDefault(x => x.Id == userId);
+
+            // Confirm user has edit access
+            if (storedWall.ManagerID != userId)
+                return BadRequest("Invalid credentials");
+            // Confirm wall name isn't ass: type check
+            if (wall.Name == null)
+                return BadRequest("A name is required. Stoopid.");
+            // Confirm wall image data isn't null/empty: range, existence check
+            if (wall.Image == null || wall.Image.Length == 0)
+                return BadRequest("Image is required");
+            // Confirm wall name isn't in use: range check
+            if (context.Walls.Select(x => x.Name).Contains(wall.Name))
+                return BadRequest("Wall name is in use");
+
+
+            // Success! :D
+            // Update the wall
+
+            // Save the image to the server
+            using (var stream = new FileStream(storedWall.ImagePath, FileMode.Create))
+            {
+                await wall.Image.CopyToAsync(stream);
+            }
+
+            // Analyse and save a json representation of the hold positions
+            // Get the file name back from path
+            var match = Regex.Match(storedWall.IdentifiedHoldsJsonPath, @"/json/(?<filename>[^/]+)");
+            string jsonFileName = match.Groups["filename"].Value;
+
+            // Construct the full URL with the fileName as a query parameter
+            // Hardcoding is ok - only the one device, on api, yada yada - see solution requirements
+            string baseUrl = "http://localhost:8000";
+            string requestUrl = $"{baseUrl}/identify-holds?fileName={Uri.EscapeDataString(jsonFileName)}";
+
+            //// Contact the python api and analyse the image
+            HttpResponseMessage rawResults = await _httpClient.GetAsync(requestUrl);
+            List<Box> boxList = WallHelper.ConvertToBoxes(await rawResults.Content.ReadAsStringAsync());
+            string jsonResults = JsonSerializer.Serialize(boxList);
+
+            // Write the new json data over the old
+            var jsonFilePath = Path.Combine(_environment.WebRootPath, "json", jsonFileName);
+            await System.IO.File.WriteAllTextAsync(jsonFilePath, jsonResults);
+
+            // Update the wall object: paths stay the same, just the name here
+            storedWall.Name = wall.Name;
+            await context.SaveChangesAsync();
+
+            // Return response: 
+            return Ok();
+        }
+    }
+
+    [HttpGet("getwall/{id}")]
     public async Task<IActionResult> GetWall(int id)
     {
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
-            var wall = await context.Walls.FindAsync(id);
-            if (wall == null)
-                return NotFound();
+            // Validate wall exists, and that user is authourised to access it (is the manager)
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            {
+                return BadRequest("Invalid credentials");
+            }
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
+                }
+            } catch { return BadRequest("Invalid credentials"); }
 
-            return Ok(wall);
+            Wall wall = await context.Walls.FindAsync(id);
+            if (wall == null) // exist check
+                return NotFound();
+            if(wall.ManagerID != userId)
+                return BadRequest("Invalid credentials");
+
+            // Set path variables, from db values
+            string jsonFilePath = _environment.WebRootPath + wall.IdentifiedHoldsJsonPath;
+            string imageFilePath = _environment.WebRootPath + wall.ImagePath;
+
+            // Load the image file (the wall)
+            FileStream imageFileStream = new FileStream(imageFilePath, FileMode.Open, FileAccess.Read);
+            FileStreamResult imageFileResult = new FileStreamResult(imageFileStream, "image/jpeg") // or "image/png" based on file type
+            {
+                FileDownloadName = Path.GetFileName(imageFilePath)
+            };
+
+            // load the json file containing the holds
+            var jsonFileContent = await System.IO.File.ReadAllTextAsync(jsonFilePath);
+
+            // Image file cannot be sent along with json data;
+            // To avoid splitting the request across multiple endpoints, encode and send.
+            byte[] imageBytes = await System.IO.File.ReadAllBytesAsync(imageFilePath);
+            string base64Image = Convert.ToBase64String(imageBytes);
+
+            // Return response: 
+            return Ok(new
+            {
+                wall.Id,
+                wall.Name,
+                Image = base64Image,
+                JsonFile = jsonFileContent
+            });
         }
     }
 }

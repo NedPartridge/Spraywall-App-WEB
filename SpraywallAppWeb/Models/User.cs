@@ -16,4 +16,9 @@ public class User
 
     // The user's hashed password - may be decrypted by the passwordencryption.decrypt method
     public string Password { get; set; }
+
+
+    // Relationships: represent relation data between objects, for the EF
+    // One user may manage many walls
+    public ICollection<Wall> ManagedWalls { get; set; } = new List<Wall>();
 }

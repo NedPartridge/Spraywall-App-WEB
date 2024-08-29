@@ -15,4 +15,8 @@ public class Wall
     // so instead, they're kept under the webrootpath
     public string ImagePath { get; set; }
     public string IdentifiedHoldsJsonPath { get; set; }
+
+    // Relationships: represent relation data between objects, for the EF
+    public int ManagerID { get; set; }
+    public User Manager { get; set; }
 }

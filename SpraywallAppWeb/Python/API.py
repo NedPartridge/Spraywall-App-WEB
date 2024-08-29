@@ -16,6 +16,8 @@ model = YOLO(r"C:\Users\nedfp\OneDrive\Desktop\Ned\Programming\Software Developm
 
 # Regular expression for validating file names (alphanumeric + underscores + dashes)
 # Unvalidated file names would allow directory traversal (security risk)
+# Wall names from the desktop app are generated unique names, so should never
+# return an error there.
 FILE_NAME_REGEX = re.compile(r'^[\w\-.]+$')
 IMAGE_DIR = r"C:\Users\nedfp\OneDrive\Desktop\Ned\Programming\Software Development\Criterion 6\Spraywall-App-WEB\SpraywallAppWeb\wwwroot\images"
 

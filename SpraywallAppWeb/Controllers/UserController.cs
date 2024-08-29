@@ -1,10 +1,14 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SpraywallAppWeb.Data;
 using SpraywallAppWeb.Helpers;
 using SpraywallAppWeb.Models;
 using SpraywallAppWeb.Services;
+using System.Diagnostics;
+using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace SpraywallAppWeb.Controllers;
 
@@ -129,29 +133,41 @@ public class UserController : ControllerBase
     {
         return Ok(PasswordEncryption.PublicKeyXML);
     }
-}
 
-
-internal static class UserHelper
-{
-    // Validate an email address
-    // TODO: Confirm email exists (external service?)
-    internal static bool IsValidEmail(string email)
+    // Return all walls managed by a given user
+    [Authorize]
+    [HttpGet]
+    [Route("getmanagedwalls")]
+    public async Task<IActionResult> GetManagedWalls()
     {
-        var trimmedEmail = email.Trim();
+        // Create a db context
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            {
+                return BadRequest("Invalid credentials");
+            }
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
+                }
+            } catch { return BadRequest("Invalid credentials"); }
 
-        if (trimmedEmail.EndsWith("."))
-        {
-            return false;
-        }
-        try
-        {
-            var addr = new System.Net.Mail.MailAddress(email);
-            return addr.Address == trimmedEmail;
-        }
-        catch
-        {
-            return false;
+            // Retrieve the list of managed walls, selecting only the necessary fields
+            var walls = context.Users
+                .Where(u => u.Id == userId)
+                .SelectMany(u => u.ManagedWalls)
+                .Select(w => new { w.Id, w.Name })
+                .ToList();
+
+            return Ok(JsonSerializer.Serialize(walls));
         }
     }
 }

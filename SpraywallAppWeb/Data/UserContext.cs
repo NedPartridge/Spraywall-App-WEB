@@ -30,20 +30,16 @@ public class UserContext : DbContext
 
 
     // Seed the database, if it's empty
+    // Define relationships
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>()
             .ToTable("User");
 
         modelBuilder.Entity<User>()
-            .HasData(
-                new User
-                {
-                    Id = 1,
-                    Name = "Jeff",
-                    Email = "jeff.theman@coolguy.com",
-                    Password = "Password0!",
-                }
-            );
+            .HasMany(e => e.ManagedWalls)
+            .WithOne(e => e.Manager)
+            .HasForeignKey(e => e.ManagerID)
+            .IsRequired();
     }
 }
