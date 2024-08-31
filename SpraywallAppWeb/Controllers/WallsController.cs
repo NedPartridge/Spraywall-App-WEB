@@ -122,7 +122,7 @@ public class WallsController : ControllerBase
 
     // Overwrite the old name, image with new name, image
     [HttpPost("updatewall/{id}")]
-    public async Task<IActionResult> UpdateWall(int id, [FromBody] CreateWallDto wall)
+    public async Task<IActionResult> UpdateWall(int id, [FromForm] CreateWallDto wallDto)
     {
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
@@ -145,44 +145,57 @@ public class WallsController : ControllerBase
             }
             catch { return BadRequest("Invalid credentials"); }
 
-            if (wall == null) // existence check
+            if (wallDto == null) // existence check
                 return BadRequest();
 
             // Get the wall stored in the db
-            Wall storedWall = context.Walls.FirstOrDefault(x => x.Id == userId);
+            Wall storedWall = context.Walls.FirstOrDefault(x => x.Id == id);
 
+            // Ensure wall exists
+            if(storedWall == null)
+                return NotFound();
             // Confirm user has edit access
             if (storedWall.ManagerID != userId)
                 return BadRequest("Invalid credentials");
-            // Confirm wall name isn't ass: type check
-            if (wall.Name == null)
+            // Confirm wall name isn't ass: existence check
+            if (wallDto.Name == null)
                 return BadRequest("A name is required. Stoopid.");
             // Confirm wall image data isn't null/empty: range, existence check
-            if (wall.Image == null || wall.Image.Length == 0)
+            if (wallDto.Image == null || wallDto.Image.Length == 0)
                 return BadRequest("Image is required");
             // Confirm wall name isn't in use: range check
-            if (context.Walls.Select(x => x.Name).Contains(wall.Name))
+            if (context.Walls.Select(x => x.Name).Contains(wallDto.Name))
                 return BadRequest("Wall name is in use");
 
 
             // Success! :D
             // Update the wall
 
+            // Create a unique file name for the image
+            var newImageFileName = Guid.NewGuid().ToString() + Path.GetExtension(wallDto.Image.FileName);
+            var newImageFilePath = Path.Combine(_environment.WebRootPath, "images", newImageFileName);
+            storedWall.ImagePath = "/images/" + newImageFileName;
             // Save the image to the server
-            using (var stream = new FileStream(storedWall.ImagePath, FileMode.Create))
+            using (var stream = new FileStream(newImageFilePath, FileMode.Create))
             {
-                await wall.Image.CopyToAsync(stream);
+                await wallDto.Image.CopyToAsync(stream);
             }
+            await context.SaveChangesAsync();
 
             // Analyse and save a json representation of the hold positions
             // Get the file name back from path
             var match = Regex.Match(storedWall.IdentifiedHoldsJsonPath, @"/json/(?<filename>[^/]+)");
             string jsonFileName = match.Groups["filename"].Value;
 
+            // Analyse and save a json representation of the hold positions
+            // Get the file name back from path
+            match = Regex.Match(storedWall.ImagePath, @"/images/(?<filename>[^/]+)");
+            string imageFileName = match.Groups["filename"].Value;
+
             // Construct the full URL with the fileName as a query parameter
             // Hardcoding is ok - only the one device, on api, yada yada - see solution requirements
             string baseUrl = "http://localhost:8000";
-            string requestUrl = $"{baseUrl}/identify-holds?fileName={Uri.EscapeDataString(jsonFileName)}";
+            string requestUrl = $"{baseUrl}/identify-holds?fileName={Uri.EscapeDataString(imageFileName)}";
 
             //// Contact the python api and analyse the image
             HttpResponseMessage rawResults = await _httpClient.GetAsync(requestUrl);
@@ -193,8 +206,8 @@ public class WallsController : ControllerBase
             var jsonFilePath = Path.Combine(_environment.WebRootPath, "json", jsonFileName);
             await System.IO.File.WriteAllTextAsync(jsonFilePath, jsonResults);
 
-            // Update the wall object: paths stay the same, just the name here
-            storedWall.Name = wall.Name;
+            // Update the wall object: json path stays the same, just the name here
+            storedWall.Name = wallDto.Name;
             await context.SaveChangesAsync();
 
             // Return response: 
