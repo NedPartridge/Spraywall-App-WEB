@@ -287,8 +287,6 @@ public class WallsController : ControllerBase
     [HttpGet("getwallname/{id}")]
     public async Task<IActionResult> GetWallName(int id)
     {
-        Debug.WriteLine("Id: " + id);
-
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
             if (!context.Walls.Any(x => x.Id == id)) // Wall not found

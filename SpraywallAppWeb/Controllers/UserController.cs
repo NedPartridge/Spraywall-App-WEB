@@ -28,8 +28,8 @@ public class UserController : ControllerBase
     // 
     // DI is also used to provide the authservice, which creates/stores security tokens.
     private readonly ILogger<UserController> _logger;
-    public UserController(ILogger<UserController> logger, 
-                        IDbContextFactory<UserContext> dbContextFactory, 
+    public UserController(ILogger<UserController> logger,
+                        IDbContextFactory<UserContext> dbContextFactory,
                         AuthService authService)
     {
         _logger = logger;
@@ -55,19 +55,19 @@ public class UserController : ControllerBase
 
         // Create an instance of the usercontext, which is destroyed on exiting the user block
         // This pattern prevents conflicts between endpoints using the same context
-        using(UserContext context = await DbContextFactory.CreateDbContextAsync())
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
             // Duplicate addresses are not allowed
-            if(context.Users.Select(x => x.Email).Contains(userToSignup.Email))
+            if (context.Users.Select(x => x.Email).Contains(userToSignup.Email))
                 return BadRequest("Email in use");
 
-            
+
             // Add the user to the database
-            User user = new() 
-            { 
-                Name = userToSignup.Name, 
-                Email = userToSignup.Email, 
-                Password = userToSignup.Password 
+            User user = new()
+            {
+                Name = userToSignup.Name,
+                Email = userToSignup.Email,
+                Password = userToSignup.Password
             };
             context.Users.Add(user);
             await context.SaveChangesAsync();
@@ -158,7 +158,8 @@ public class UserController : ControllerBase
                 {
                     return BadRequest("Invalid credentials");
                 }
-            } catch { return BadRequest("Invalid credentials"); }
+            }
+            catch { return BadRequest("Invalid credentials"); }
 
             // Retrieve the list of managed walls, selecting only the necessary fields
             var walls = context.Users
@@ -168,6 +169,170 @@ public class UserController : ControllerBase
                 .ToList();
 
             return Ok(JsonSerializer.Serialize(walls));
+        }
+    }
+
+
+    // Return all walls the user has saved (accessed)
+    [Authorize]
+    [HttpGet("getsavedwalls")]
+    public async Task<IActionResult> GetSavedWalls()
+    {
+        // Create a db context
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            {
+                return BadRequest("Invalid credentials");
+            }
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
+                }
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            // Retrieve the list of managed walls, selecting only the necessary fields
+            var walls = context.Users
+                .Include(u => u.SavedWalls)
+                .Where(u => u.Id == userId)
+                .SelectMany(w => w.SavedWalls)
+                .Select(w => new { w.Id, w.Name })
+                .ToList();
+
+            return Ok(JsonSerializer.Serialize(walls));
+        }
+    }
+
+
+    // Add the given wall to the set of the requesting user's saved walls
+    [Authorize]
+    [HttpGet("savewall/{id}")]
+    public async Task<IActionResult> SaveWall(int id)
+    {
+        // Create a db context
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            // Get the user, and wall, confirm not ass
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            {
+                return BadRequest("Invalid credentials");
+            }
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
+                }
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+
+            // Update the data in the relationship - adding to one adds to both (yay EF!)
+            User user = context.Users.First(u => u.Id == userId);
+            Wall wall = context.Walls.FirstOrDefault(w => w.Id == id);
+            if (wall == null)
+                return NotFound();
+            // If it's not already there, add it
+            // If it is, just return and let the illiterate bumpkin on the other end feel pleased.
+            if (!wall.SavedUsers.Contains(user))
+                wall.SavedUsers.Add(user);
+            await context.SaveChangesAsync();
+
+            return Ok();
+        }
+    }
+
+    // Edit a user's personal settings
+    [Authorize]
+    [HttpPost("edituser")]
+    public async Task<IActionResult> EditUser(UserToSignup userToEdit)
+    {
+        // If email is not valid, reject before committing to further processing
+        if (!UserHelper.IsValidEmail(userToEdit.Email))
+            return BadRequest("Email is invalid");
+
+
+        // Create a db context, to manage stored data
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            // Get the user, confirming it's a valid request
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            {
+                return BadRequest("Invalid credentials");
+            }
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
+                }
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            // Duplicate addresses are not allowed
+            if (context.Users.Select(x => x.Email).Contains(userToEdit.Email))
+                return BadRequest("Email in use");
+
+            // Update the user's fields
+            User user = context.Users.First(x => x.Id == userId);
+            user.Name = userToEdit.Name;
+            user.Email = userToEdit.Email;
+            user.Password = userToEdit.Password;
+
+            // Save
+            await context.SaveChangesAsync();
+            return Ok();
+        }
+    }
+
+    // Retrieve the logged in user (from token)
+    [Authorize]
+    [HttpGet("getuser")]
+    public async Task<IActionResult> GetUser()
+    {
+        // Create a db context, to manage stored data
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            // Get the user, confirming it's a valid request
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+            {
+                return BadRequest("Invalid credentials");
+            }
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
+                }
+            }
+            catch { return BadRequest("Invalid credentials"); }
+            
+            // Prepare the user to send
+            var user = context.Users.Select(x => new {x.Id, x.Email, x.Name}).First(x => x.Id == userId);
+            return Ok(user);
         }
     }
 }
