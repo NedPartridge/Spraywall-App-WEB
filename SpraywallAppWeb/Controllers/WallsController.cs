@@ -273,4 +273,21 @@ public class WallsController : ControllerBase
             });
         }
     }
+
+
+    // Return the name of the wall with the given ID.
+    // No authorization required
+    [AllowAnonymous]
+    [HttpGet("getwallname/{id}")]
+    public async Task<IActionResult> GetWallName(int id)
+    {
+        Debug.WriteLine("Id: " + id);
+
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Walls.Any(x => x.Id == id)) // Wall not found
+                return NotFound();
+            return Ok(context.Walls.FirstOrDefault(x => x.Id == x.Id).Name); // Wall found: return the name
+        }
+    }
 }
