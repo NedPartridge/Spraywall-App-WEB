@@ -21,4 +21,10 @@ public class User
     // Relationships: represent relation data between objects, for the EF
     // One user may manage many walls
     public ICollection<Wall> ManagedWalls { get; set; } = new List<Wall>();
+
+    // Walls the user is banned from accessing
+    public ICollection<Wall> BannedWalls { get; set; } = new List<Wall>();
+
+    // Walls the user has loaded previously
+    public ICollection<Wall> SavedWalls { get; set; } = new List<Wall>();
 }

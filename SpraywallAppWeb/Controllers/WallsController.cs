@@ -120,7 +120,10 @@ public class WallsController : ControllerBase
 
 
 
-    // Overwrite the old name, image with new name, image
+    // For a given wall, overwrite the old name, image with new name, image
+    //
+    // The image is not lost, in compliance with data storage laws
+    // A new image is added, and the reference changed.
     [HttpPost("updatewall/{id}")]
     public async Task<IActionResult> UpdateWall(int id, [FromForm] CreateWallDto wallDto)
     {
@@ -215,6 +218,9 @@ public class WallsController : ControllerBase
         }
     }
 
+
+    // Return data related to a wall, given it's ID
+    // Authorisation required.
     [HttpGet("getwall/{id}")]
     public async Task<IActionResult> GetWall(int id)
     {

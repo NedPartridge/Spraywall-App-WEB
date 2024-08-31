@@ -29,17 +29,27 @@ public class UserContext : DbContext
     public DbSet<Wall> Walls { get; set; }
 
 
-    // Seed the database, if it's empty
-    // Define relationships
+    // Define relationships between objects
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>()
             .ToTable("User");
 
+        // Walls each have one manager, who may manage many walls
         modelBuilder.Entity<User>()
             .HasMany(e => e.ManagedWalls)
             .WithOne(e => e.Manager)
             .HasForeignKey(e => e.ManagerID)
             .IsRequired();
+
+        // Users can be banned from many walls, which can ban many users
+        modelBuilder.Entity<User>()
+            .HasMany(e => e.BannedWalls)
+            .WithMany(e => e.BannedUsers);
+
+        // Users can save many walls, which can be saved by many users
+        modelBuilder.Entity<User>()
+            .HasMany(e => e.SavedWalls)
+            .WithMany(e => e.SavedUsers);
     }
 }

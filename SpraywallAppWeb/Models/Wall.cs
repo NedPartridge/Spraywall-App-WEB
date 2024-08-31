@@ -9,6 +9,10 @@ public class Wall
     // Wall name
     // Chosen by user, but manually kept unique for conveniance 
     public string Name { get; set; }
+    
+    // Whether the wall can be added by viewing users by id/seen from search
+    public bool AccessibleViaSearch { get; set; } = true;
+
 
     // Paths to files
     // The data in the files is to big to be efficiently stored in the database,
@@ -19,4 +23,10 @@ public class Wall
     // Relationships: represent relation data between objects, for the EF
     public int ManagerID { get; set; }
     public User Manager { get; set; }
+
+    // Users who are banned from accesing the wall
+    public ICollection<User> BannedUsers { get; set; } = new List<User>();
+
+    // Users who have loaded the wall before
+    public ICollection<User> SavedUsers { get; set; } = new List<User>();
 }
