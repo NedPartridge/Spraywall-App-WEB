@@ -49,6 +49,9 @@ public class UserController : ControllerBase
     [Route("signup")]
     public async Task<IActionResult> SignUpUser(UserToSignup userToSignup)
     {
+        // Existence check
+        if (userToSignup.Email == null | userToSignup.Password == null | userToSignup.Name == null)
+            return BadRequest("No null fields");
         // If email is not valid, reject before committing to further processing
         if (!UserHelper.IsValidEmail(userToSignup.Email))
             return BadRequest("Email is invalid");
@@ -260,11 +263,6 @@ public class UserController : ControllerBase
     [HttpPost("edituser")]
     public async Task<IActionResult> EditUser(UserToSignup userToEdit)
     {
-        // If email is not valid, reject before committing to further processing
-        if (!UserHelper.IsValidEmail(userToEdit.Email))
-            return BadRequest("Email is invalid");
-
-
         // Create a db context, to manage stored data
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
@@ -287,17 +285,24 @@ public class UserController : ControllerBase
             }
             catch { return BadRequest("Invalid credentials"); }
 
-            // Duplicate addresses are not allowed
-            if (context.Users.Select(x => x.Email).Contains(userToEdit.Email))
-                return BadRequest("Email in use");
 
-            // Update the user's fields
             User user = context.Users.First(x => x.Id == userId);
-            user.Name = userToEdit.Name;
-            user.Email = userToEdit.Email;
-            user.Password = userToEdit.Password;
 
-            // Save
+            // Only update data if fields are provided
+            if (userToEdit.Name != null)
+                user.Name = userToEdit.Name;
+            if (userToEdit.Email != null)
+            {
+                if (!UserHelper.IsValidEmail(userToEdit.Email))
+                    return BadRequest("Email is invalid");
+                // Duplicate addresses are not allowed
+                if (context.Users.Where(u => u.Id != userId).Select(x => x.Email).Contains(userToEdit.Email))
+                    return BadRequest("Email in use");
+                user.Email = userToEdit.Email;
+            }
+            if (userToEdit.Password != null)
+                user.Password = userToEdit.Password;
+            // Save any changes
             await context.SaveChangesAsync();
             return Ok();
         }

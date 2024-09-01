@@ -8,10 +8,10 @@
 public class UserToSignup
 {
     // Personal details
-    public string Name { get; set; }
-    public string Email { get; set; }
+    public string? Name { get; set; }
+    public string? Email { get; set; }
 
     // A hashed password - the password is stored hashed, too, but may be
     // decrypted by the passwordencryption.decrypt method
-    public string Password { get; set; }
+    public string? Password { get; set; }
 }

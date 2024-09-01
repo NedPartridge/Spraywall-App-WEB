@@ -247,8 +247,6 @@ public class WallsController : ControllerBase
             Wall wall = await context.Walls.FindAsync(id);
             if (wall == null) // exist check
                 return NotFound();
-            if(wall.ManagerID != userId)
-                return BadRequest("Invalid credentials");
 
             // Set path variables, from db values
             string jsonFilePath = _environment.WebRootPath + wall.IdentifiedHoldsJsonPath;
