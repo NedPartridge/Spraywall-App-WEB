@@ -226,7 +226,7 @@ public class WallsController : ControllerBase
     {
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
-            // Validate wall exists, and that user is authourised to access it (is the manager)
+            // Validate wall exists, and that user is authourised to access it
             int userId;
             string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdString == null) // existence check 
@@ -291,5 +291,70 @@ public class WallsController : ControllerBase
                 return NotFound();
             return Ok(context.Walls.FirstOrDefault(x => x.Id == x.Id).Name); // Wall found: return the name
         }
+    }
+
+
+
+    // Create a climb, given a climb, and the id of the wall to put it under
+    [HttpPost("createclimb/{id}")]
+    public async Task<IActionResult> CreateClimb([FromBody] CreateClimb climbToCreate, int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            // Validate that user is authourised
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+                return BadRequest("Invalid credentials");
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                    return BadRequest("Invalid credentials");
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            // validate the wall id exists
+            if (!context.Walls.Any(x => x.Id == id))
+                return NotFound();
+
+            // Confirm request is valid
+            if (climbToCreate == null |
+                string.IsNullOrEmpty(climbToCreate.SetterName) |
+                climbToCreate.Grade < 0 |
+                string.IsNullOrEmpty(climbToCreate.Name) |
+                string.IsNullOrEmpty(climbToCreate.JsonHolds) |
+                climbToCreate.Attempts < 1)
+                    return BadRequest("ass");
+
+            // Success! :D 
+            // Create the climb
+            User user = context.Users.First(x => x.Id == id);
+            Climb climb = new()
+            {
+                Name = climbToCreate.Name,
+                Grade = Convert.ToInt32(climbToCreate.Grade),
+                JsonHolds = climbToCreate.JsonHolds,
+                SetterName = user.Name,
+                WallID = id
+            };
+
+            UserClimb userClimb = new()
+            {
+                Climb = climb,
+                User = user,
+                NumberOfAttempts = Convert.ToInt32(climbToCreate.Attempts)
+            };
+
+            // Add the climb and UserClimb to the context
+            context.Climbs.Add(climb);
+            context.UserClimbs.Add(userClimb);
+
+            await context.SaveChangesAsync();
+        }
+
+        return Ok();
     }
 }

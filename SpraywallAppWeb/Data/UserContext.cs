@@ -27,6 +27,9 @@ public class UserContext : DbContext
     // structures, rather than raw sql queries.
     public DbSet<User> Users { get; set; }
     public DbSet<Wall> Walls { get; set; }
+    public DbSet<Climb> Climbs { get; set; }
+    public DbSet<UserClimb> UserClimbs { get; set; }
+
 
 
     // Define relationships between objects

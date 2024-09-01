@@ -27,4 +27,7 @@ public class User
 
     // Walls the user has loaded previously
     public ICollection<Wall> SavedWalls { get; set; } = new List<Wall>();
+
+    // The climbs the user has logged - through a join table to permit attempt tracking.
+    public ICollection<UserClimb> UserClimbs { get; set; } = new List<UserClimb>();
 }

@@ -29,4 +29,7 @@ public class Wall
 
     // Users who have loaded the wall before
     public ICollection<User> SavedUsers { get; set; } = new List<User>();
+
+    // Climbs on the wall
+    public ICollection<Climb> Climbs { get; set; } = new List<Climb>();
 }
