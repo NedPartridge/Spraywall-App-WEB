@@ -82,6 +82,7 @@ public class UserController : ControllerBase
         }
     }
 
+    // Login a user, return a token
     [HttpPost]
     [Route("login")]
     public async Task<IActionResult> LogInUser(UserToLogin userToLogin)
