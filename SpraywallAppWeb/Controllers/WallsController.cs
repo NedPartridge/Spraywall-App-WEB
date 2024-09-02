@@ -33,7 +33,7 @@ public class WallsController : ControllerBase
         DbContextFactory = dbContextFactory;
     }
 
-    HttpClient _httpClient = new(); 
+    HttpClient _httpClient = new();
 
     // Create a wall, and add it to the database: authorization required (inherits from controller)
     // 
@@ -52,17 +52,17 @@ public class WallsController : ControllerBase
             int userId;
             string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (userIdString == null) // existence check 
-            { 
-                return BadRequest("Invalid credentials"); 
+            {
+                return BadRequest("Invalid credentials");
             }
-            try 
+            try
             {
                 // Type check
                 userId = Convert.ToInt32(userIdString);
                 // Range check - is it a real userid?
-                if (!context.Users.Select(x => x.Id).Any()) 
-                { 
-                    return BadRequest("Invalid credentials"); 
+                if (!context.Users.Select(x => x.Id).Any())
+                {
+                    return BadRequest("Invalid credentials");
                 }
             }
             catch (Exception ex) { return BadRequest("Invalid credentials"); }
@@ -155,7 +155,7 @@ public class WallsController : ControllerBase
             Wall storedWall = context.Walls.FirstOrDefault(x => x.Id == id);
 
             // Ensure wall exists
-            if(storedWall == null)
+            if (storedWall == null)
                 return NotFound();
             // Confirm user has edit access
             if (storedWall.ManagerID != userId)
@@ -220,32 +220,16 @@ public class WallsController : ControllerBase
 
 
     // Return data related to a wall, given it's ID
-    // Authorisation required.
+    // No authorisation required.
+    [AllowAnonymous]
     [HttpGet("getwall/{id}")]
     public async Task<IActionResult> GetWall(int id)
     {
         using (UserContext context = await DbContextFactory.CreateDbContextAsync())
         {
-            // Validate wall exists, and that user is authourised to access it
-            int userId;
-            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (userIdString == null) // existence check 
-            {
-                return BadRequest("Invalid credentials");
-            }
-            try
-            {
-                // Type check - exits to catch block on a fail
-                userId = Convert.ToInt32(userIdString);
-                // Range check - is it a real userid?
-                if (!context.Users.Select(x => x.Id).Any())
-                {
-                    return BadRequest("Invalid credentials");
-                }
-            } catch { return BadRequest("Invalid credentials"); }
-
+            // Validate wall exists
             Wall wall = await context.Walls.FindAsync(id);
-            if (wall == null) // exist check
+            if (wall == null)
                 return NotFound();
 
             // Set path variables, from db values
@@ -327,7 +311,7 @@ public class WallsController : ControllerBase
                 string.IsNullOrEmpty(climbToCreate.Name) |
                 string.IsNullOrEmpty(climbToCreate.JsonHolds) |
                 climbToCreate.Attempts < 1)
-                    return BadRequest("ass");
+                return BadRequest("ass");
 
             // Success! :D 
             // Create the climb
@@ -344,7 +328,7 @@ public class WallsController : ControllerBase
             UserClimb userClimb = new()
             {
                 Climb = climb,
-                User = user,
+                UserId = userId,
                 NumberOfAttempts = Convert.ToInt32(climbToCreate.Attempts)
             };
 
@@ -356,5 +340,283 @@ public class WallsController : ControllerBase
         }
 
         return Ok();
+    }
+
+    // Get all climbs under the given wall Id
+    // No auth required
+    [AllowAnonymous]
+    [HttpGet("getclimbs/{id}")]
+    public async Task<IActionResult> GetClimbs(int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Walls.Any(x => x.Id == id)) 
+                return NotFound();
+            return Ok(context.Climbs.Where(x => x.WallID == id).Select(c => c.Id).ToList());
+        }
+    }
+
+
+    // Get all of a user's logged climbs
+    // Auth required
+    [HttpGet("getuserclimbs")]
+    public async Task<IActionResult> GetLLoggedClimbs()
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            // Validate that user is authourised
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+                return BadRequest("Invalid credentials");
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                    return BadRequest("Invalid credentials");
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            User user = context.Users.Include(u => u.UserClimbs).ThenInclude(uc => uc.Climb).ThenInclude(c => c.Wall).First(u => u.Id == userId);
+            return Ok(user.UserClimbs.Select(x => new { x.ClimbId, x.Climb.Name, x.Climb.WallID, WallName = x.Climb.Wall.Name }));
+        }
+    }
+
+    // Get a climb, for a logged in user
+    [HttpGet("getclimb/{id}")]
+    public async Task<IActionResult> GetClimb(int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Climbs.Any(x => x.Id == id))
+                return NotFound();
+
+            User? user;
+
+            // Check if user is logged in
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int userId = -1;
+            try // Will exit to catch if not a real user
+            {
+                userId = Convert.ToInt32(userIdString);
+                user = context.Users.FirstOrDefault(x => x.Id == userId);
+                if (user == null) { throw new Exception(); }
+            }
+            catch // User is not logged in
+            { return BadRequest(); }
+
+            ClimbDto climb = context.Climbs.Include(x => x.UserClimbs).Select(x => new ClimbDto
+                {
+                    Id = x.Id,
+                    Grade = x.Grade,
+                    Name = x.Name,
+                    SetterName = x.SetterName,
+                    JsonHolds = x.JsonHolds,
+                    Attempts = x.UserClimbs.FirstOrDefault(c => c.UserId == userId).NumberOfAttempts
+                }).First(c => c.Id == id);
+
+            return Ok(climb);
+        }
+    }
+
+    // Get a climb, for a not logged in user
+    [AllowAnonymous]
+    [HttpGet("anonymousgetclimb/{id}")]
+    public async Task<IActionResult> AnonymousGetClimb(int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Climbs.Any(x => x.Id == id))
+                return NotFound();
+
+            ClimbDto climb = context.Climbs.Include(x => x.UserClimbs).Select(x => new ClimbDto
+            {
+                Id = x.Id,
+                Grade = x.Grade,
+                Name = x.Name,
+                SetterName = x.SetterName,
+                JsonHolds = x.JsonHolds,
+            }).First(c => c.Id == id);
+
+            return Ok(climb);
+        }
+    }
+
+
+
+    // Return if a wall Id matches a wall
+    // No auth required
+    [AllowAnonymous]
+    [HttpGet("iswall/{id}")]
+    public async Task<IActionResult> iswall(int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Walls.Any(x => x.Id == id))
+                return NotFound();
+            return Ok();
+        }
+    }
+
+
+
+    // Add a climb to user's logged climbs
+    // Auth required
+    [HttpGet("logclimb/{id}/{attempts}")]
+    public async Task<IActionResult> LogClimb(int id, int attempts)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Climbs.Any(x => x.Id == id))
+                return NotFound();
+
+            // Validate that user is authorised
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+                return BadRequest("Invalid credentials");
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                    return BadRequest("Invalid credentials");
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            User user = context.Users.Include(x => x.UserClimbs).First(x => x.Id == userId);
+
+            // If climb is already logged, update the attempts
+            if (user.UserClimbs.Any(u => u.ClimbId == id))
+            {
+                user.UserClimbs.First(u => u.ClimbId == id).NumberOfAttempts = attempts;
+            }
+            else // Otherwise, log the climb
+            {
+                UserClimb u = new()
+                {
+                    ClimbId = id,
+                    UserId = userId,
+                    NumberOfAttempts = attempts
+                };
+                context.UserClimbs.Add(u);
+            }
+            await context.SaveChangesAsync();
+            return Ok();
+        }
+    }
+
+    // "Flag" a climb as problematic to the wall manager
+    [HttpGet("flagclimb/{id}")]
+    public async Task<IActionResult> FlagClimb(int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Climbs.Any(x => x.Id == id))
+                return NotFound();
+
+            // Validate that user is authorised
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+                return BadRequest("Invalid credentials");
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                    return BadRequest("Invalid credentials");
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            // Flag the climb, save db
+            Climb climb = context.Climbs.First(c => c.Id == id);
+            climb.Flagged = true;
+            await context.SaveChangesAsync();
+            return Ok();
+        }
+    }
+
+    // For the management portal: get the climbs on a wall
+    [HttpGet("getclimbsmanagement/{id}")]
+    public async Task<IActionResult> GetClimbsManagement(int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            if (!context.Walls.Any(x => x.Id == id))
+                return NotFound();
+
+            // Validate that user is authorised
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+                return BadRequest("Invalid credentials");
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                    return BadRequest("Invalid credentials");
+                // Range check - is the user this walls manager?
+                if (context.Walls.First(x => x.Id == id).ManagerID != userId)
+                    return BadRequest("Invalid credentials");
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            // Success!
+            var climbs = context.Walls.Include(x => x.Climbs).First(x => x.Id == id).Climbs
+                .Select(x => new
+                {
+                    x.Name,
+                    x.Id,
+                    x.Flagged
+                }).ToList();
+            return Ok(climbs);
+        }
+    }
+
+    // Delete the given climb
+    [HttpGet("deleteclimb/{wallId}/{id}")]
+    public async Task<IActionResult> DeleteClimb(int wallId, int id)
+    {
+        using (UserContext context = await DbContextFactory.CreateDbContextAsync())
+        {
+            // Range: wall, climb must exist, and be linked
+            if (!context.Climbs.Any(x => x.Id == id))
+                return NotFound();
+            if (!context.Walls.Any(x => x.Id == wallId))
+                return NotFound();
+            if (!context.Walls.Include(w => w.Climbs).First(x => x.Id == wallId).Climbs.Any(x => x.Id == id))
+                return NotFound();
+
+            // Validate that user is authorised
+            int userId;
+            string userIdString = HttpContext.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (userIdString == null) // existence check 
+                return BadRequest("Invalid credentials");
+            try
+            {
+                // Type check - exits to catch block on a fail
+                userId = Convert.ToInt32(userIdString);
+                // Range check - is it a real userid?
+                if (!context.Users.Select(x => x.Id).Any())
+                    return BadRequest("Invalid credentials");
+                // Range check - is the user this walls manager?
+                if (context.Walls.First(x => x.Id == wallId).ManagerID != userId)
+                    return BadRequest("Invalid credentials");
+            }
+            catch { return BadRequest("Invalid credentials"); }
+
+            // Success!
+            context.Remove(context.Climbs.First(x => x.Id == id));
+            await context.SaveChangesAsync();
+
+            return Ok();
+        }
     }
 }

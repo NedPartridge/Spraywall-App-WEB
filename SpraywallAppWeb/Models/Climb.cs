@@ -14,4 +14,7 @@ public class Climb
     // The wall the climb is on
     public int WallID { get; set; } 
     public Wall Wall { get; set; }
+
+    // Whether the wall has been identified as problematic
+    public bool Flagged { get; set; }
 }
